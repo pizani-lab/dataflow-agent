@@ -395,7 +395,7 @@ Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para ma
 
 <div align="center">
 
-Desenvolvido por **Pizani** · 2026
+Desenvolvido por **Daniel Pizani** · 2026
 
 Django · Celery · Claude API · React · PostgreSQL
 
