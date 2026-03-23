@@ -1,0 +1,26 @@
+id,nome,email,idade,salario,departamento,cidade,data_admissao
+1,Ana Souza,ana.souza@empresa.com,34,8500.00,Engenharia,São Paulo,2021-03-15
+2,Bruno Lima,,28,5200.00,Marketing,Rio de Janeiro,2022-07-01
+3,Carla Mendes,carla.mendes@empresa.com,41,12000.00,Engenharia,São Paulo,2019-11-20
+4,Daniel Costa,daniel.costa@empresa.com,29,,TI,Belo Horizonte,2023-01-10
+5,Elisa Rocha,elisa.rocha@empresa.com,36,9800.00,RH,Porto Alegre,2020-06-05
+6,Felipe Andrade,felipe.andrade@empresa.com,52,15000.00,Diretoria,São Paulo,2015-04-22
+7,Gabriela Nunes,,31,6400.00,Marketing,Curitiba,2022-09-14
+8,Hugo Ferreira,hugo.ferreira@empresa.com,27,4800.00,TI,São Paulo,2023-05-30
+9,Isabela Carvalho,isabela.carvalho@empresa.com,44,11200.00,Engenharia,Rio de Janeiro,2018-02-11
+10,João Alves,joao.alves@empresa.com,38,7600.00,Vendas,Salvador,2021-08-19
+11,Karen Oliveira,karen.oliveira@empresa.com,26,4500.00,RH,São Paulo,2024-01-08
+12,Lucas Pereira,lucas.pereira@empresa.com,,9300.00,TI,Campinas,2020-10-03
+13,Mariana Santos,mariana.santos@empresa.com,33,8100.00,Engenharia,São Paulo,2021-05-27
+14,Nicolas Ramos,nicolas.ramos@empresa.com,45,13500.00,Diretoria,Rio de Janeiro,2017-03-16
+15,Olivia Castro,olivia.castro@empresa.com,30,6800.00,Marketing,Florianópolis,2022-11-02
+16,Pedro Monteiro,pedro.monteiro@empresa.com,39,9100.00,Vendas,São Paulo,2020-07-21
+17,Quézia Barbosa,,25,4200.00,RH,Fortaleza,2024-02-14
+18,Rafael Silveira,rafael.silveira@empresa.com,47,14200.00,Engenharia,São Paulo,2016-09-08
+19,Sabrina Torres,sabrina.torres@empresa.com,32,7300.00,Marketing,Rio de Janeiro,2021-12-05
+20,Thiago Vieira,thiago.vieira@empresa.com,29,5600.00,TI,Belo Horizonte,2023-03-22
+21,Ana Souza,ana.souza@empresa.com,34,8500.00,Engenharia,São Paulo,2021-03-15
+22,Bruna Fonseca,bruna.fonseca@empresa.com,37,,Vendas,Porto Alegre,2020-04-17
+23,Caio Nascimento,caio.nascimento@empresa.com,43,10800.00,Engenharia,Curitiba,2018-08-30
+24,Diana Azevedo,diana.azevedo@empresa.com,28,5900.00,Marketing,São Paulo,2022-06-12
+25,Eduardo Pinto,eduardo.pinto@empresa.com,55,16500.00,Diretoria,São Paulo,2013-11-25
