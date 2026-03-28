@@ -1,3 +1,4 @@
+name: dataflow_stack
 services:
   db:
     image: postgres:16-alpine
@@ -6,7 +7,7 @@ services:
       POSTGRES_USER: dataflow
       POSTGRES_PASSWORD: dataflow
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdataflow:/var/lib/postgresql/data
     ports:
       - "5401:5432"
 
@@ -59,14 +60,16 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    environment:
+      API_TARGET: http://backend:8001
     volumes:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "5101:5175"
+      - "5101:5101"
     depends_on:
       - backend
 
 volumes:
-  pgdata:
+  pgdataflow:
   upload_data:
