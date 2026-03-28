@@ -18,6 +18,9 @@ SECRET_KEY = env("SECRET_KEY")
 # DEBUG = env("DEBUG")
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+# hostname interno do Docker — necessário quando o proxy Vite usa changeOrigin: true
+if "backend" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("backend")
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
@@ -38,7 +41,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "django_celery_results",
-"django_celery_beat",
+    "django_celery_beat",
     "channels",
     # Local
     "dataflow",
@@ -107,17 +110,17 @@ CORS_ALLOWED_ORIGINS = [
 # Anthropic
 # ──────────────────────────────────────────────
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
-AGENT_MOCK        = env.bool("AGENT_MOCK", default=True)
-OLLAMA_URL        = env("OLLAMA_URL",   default="http://127.0.0.1:11434")
-OLLAMA_MODEL      = env("OLLAMA_MODEL", default="qwen3.5:latest")
+AGENT_MOCK = env.bool("AGENT_MOCK", default=True)
+OLLAMA_URL = env("OLLAMA_URL", default="http://127.0.0.1:11434")
+OLLAMA_MODEL = env("OLLAMA_MODEL", default="qwen3.5:latest")
 ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-sonnet-4-20250514")
 
 # Custo por milhão de tokens (claude-sonnet-4-x — preços em USD)
 # Blended = estimativa 80% input + 20% output
-ANTHROPIC_INPUT_COST_PER_M  = env.float("ANTHROPIC_INPUT_COST_PER_M",  default=3.0)
+ANTHROPIC_INPUT_COST_PER_M = env.float("ANTHROPIC_INPUT_COST_PER_M", default=3.0)
 ANTHROPIC_OUTPUT_COST_PER_M = env.float("ANTHROPIC_OUTPUT_COST_PER_M", default=15.0)
 ANTHROPIC_BLENDED_COST_PER_M = (
-    ANTHROPIC_INPUT_COST_PER_M * 0.8 + ANTHROPIC_OUTPUT_COST_PER_M * 0.2
+        ANTHROPIC_INPUT_COST_PER_M * 0.8 + ANTHROPIC_OUTPUT_COST_PER_M * 0.2
 )  # ≈ 5.40 USD/M
 
 # ──────────────────────────────────────────────

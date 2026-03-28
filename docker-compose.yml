@@ -1,17 +1,20 @@
+name: dataflow_stack
 services:
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: dataflow
       POSTGRES_USER: dataflow
       POSTGRES_PASSWORD: dataflow
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdataflow:/var/lib/postgresql/data
     ports:
       - "5401:5432"
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6401:6379"
 
@@ -19,6 +22,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: python manage.py runserver 0.0.0.0:8001
     volumes:
       - ./backend:/app
@@ -34,6 +38,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: celery -A config worker -l info --concurrency=2
     volumes:
       - ./backend:/app
@@ -47,6 +52,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    restart: unless-stopped
     command: celery -A config beat -l info
     volumes:
       - ./backend:/app
@@ -59,14 +65,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      API_TARGET: http://backend:8001
     volumes:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "5101:5175"
+      - "5101:5101"
     depends_on:
       - backend
 
 volumes:
-  pgdata:
+  pgdataflow:
   upload_data:
