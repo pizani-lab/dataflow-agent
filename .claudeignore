@@ -1,0 +1,62 @@
+# ═══ Dependencies ═══
+node_modules/
+frontend/node_modules/
+.venv/
+venv/
+env/
+
+# ═══ Lock files (30k-80k tokens cada!) ═══
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+poetry.lock
+Pipfile.lock
+
+# ═══ Build artifacts ═══
+dist/
+build/
+frontend/dist/
+*.min.js
+*.min.css
+*.map
+staticfiles/
+
+# ═══ Python cache ═══
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# ═══ Database ═══
+*.sqlite3
+db.sqlite3
+
+# ═══ Docker volumes ═══
+pgdata/
+
+# ═══ IDE ═══
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ═══ OS ═══
+.DS_Store
+Thumbs.db
+
+# ═══ Logs ═══
+*.log
+logs/
+
+# ═══ Coverage / Tests output ═══
+coverage/
+htmlcov/
+.coverage
+.pytest_cache/
+.mypy_cache/
+
+# ═══ Secrets (soft block — use permissions.deny para hard block) ═══
+.env
+.env.*
+secrets/
