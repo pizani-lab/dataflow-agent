@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# deploy.sh — publica a branch atual no VPS via SSH
+# deploy.sh — cria branch, push, PR no GitHub e publica no VPS via SSH
 # Uso: ./deploy.sh [usuario@host] [diretorio-remoto]
+#
+# Pré-requisitos:
+#   gh auth login          (primeira vez)
+#   gh auth setup-git      (configura credencial git via gh)
 
 set -e
 
@@ -25,9 +29,25 @@ if ! git rev-parse --is-inside-work-tree &>/dev/null; then
   exit 1
 fi
 
+if ! command -v gh &>/dev/null; then
+  error "gh CLI não encontrado. Instale com: sudo pacman -S github-cli"
+  error "Depois autentique: gh auth login && gh auth setup-git"
+  exit 1
+fi
+
+if ! gh auth status &>/dev/null; then
+  error "gh não autenticado. Rode: gh auth login"
+  exit 1
+fi
+
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 BASE="$(git merge-base main "$BRANCH")"
 COMMITS="$(git rev-list "$BASE".."$BRANCH" --count)"
+
+if [ "$BRANCH" = "main" ]; then
+  error "Você está na main. Crie uma branch antes de fazer deploy."
+  exit 1
+fi
 
 if [ "$COMMITS" -eq 0 ]; then
   error "Branch '$BRANCH' não tem commits além do main. Nada para publicar."
@@ -39,13 +59,31 @@ if ! ssh -o BatchMode=yes -o ConnectTimeout=5 "$VPS" true &>/dev/null; then
   exit 1
 fi
 
-# ── Gera patch ─────────────────────────────────────────────────────────
+# ── Push para o GitHub ─────────────────────────────────────────────────
 info "Branch: ${BOLD}$BRANCH${NC} ($COMMITS commit(s) além do main)"
-info "Gerando patch..."
-git format-patch main.."$BRANCH" --stdout > "$PATCH_FILE"
+info "Publicando branch no GitHub..."
+git push origin "$BRANCH" --force-with-lease
 
-# ── Envia patch ────────────────────────────────────────────────────────
-info "Enviando para $VPS..."
+# ── Cria ou atualiza PR ────────────────────────────────────────────────
+info "Verificando PR no GitHub..."
+PR_URL="$(gh pr view "$BRANCH" --json url -q .url 2>/dev/null || true)"
+
+if [ -z "$PR_URL" ]; then
+  info "Criando Pull Request..."
+  TITLE="$(git log "$BASE".."$BRANCH" --oneline | tail -1 | sed 's/^[a-f0-9]* //')"
+  PR_URL="$(gh pr create \
+    --base main \
+    --head "$BRANCH" \
+    --title "$TITLE" \
+    --body "$(git log "$BASE".."$BRANCH" --oneline | sed 's/^/- /')")"
+  success "PR criado: $PR_URL"
+else
+  success "PR já existe: $PR_URL"
+fi
+
+# ── Gera e envia patch para o VPS ──────────────────────────────────────
+info "Gerando patch para o VPS..."
+git format-patch main.."$BRANCH" --stdout > "$PATCH_FILE"
 scp -q "$PATCH_FILE" "$VPS:/tmp/dataflow-deploy.patch"
 rm -f "$PATCH_FILE"
 
@@ -54,15 +92,12 @@ info "Aplicando no VPS ($REMOTE_DIR)..."
 ssh "$VPS" bash <<EOF
   set -e
   cd $REMOTE_DIR
-
-  # recria a branch com os commits do patch
   git checkout main
   git branch -D "$BRANCH" 2>/dev/null || true
   git checkout -b "$BRANCH"
   git am --abort 2>/dev/null || true
   git am /tmp/dataflow-deploy.patch
   rm -f /tmp/dataflow-deploy.patch
-
   echo "branch ok"
 EOF
 
@@ -82,3 +117,4 @@ ssh "$VPS" "docker ps --format 'table {{.Names}}\t{{.Status}}' | grep dataflow_s
   | while IFS= read -r line; do echo -e "  $line"; done
 echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 success "Deploy concluído → $VPS:$REMOTE_DIR (branch: $BRANCH)"
+[ -n "$PR_URL" ] && success "PR: $PR_URL"
