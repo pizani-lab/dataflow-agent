@@ -117,7 +117,7 @@ CSV / JSON / Excel / Parquet
 ### 1. Clone e configure o ambiente
 
 ```bash
-git clone https://github.com/pizani/dataflow-agent.git
+git clone https://github.com/pizanao/dataflow-agent.git
 cd dataflow-agent
 
 python -m venv .venv && source .venv/bin/activate

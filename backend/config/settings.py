@@ -15,7 +15,8 @@ environ.Env.read_env(os.path.join(BASE_DIR.parent, ".env"))
 # Core
 # ──────────────────────────────────────────────
 SECRET_KEY = env("SECRET_KEY")
-DEBUG = env("DEBUG")
+# DEBUG = env("DEBUG")
+DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
@@ -37,6 +38,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "django_celery_results",
+"django_celery_beat",
     "channels",
     # Local
     "dataflow",
