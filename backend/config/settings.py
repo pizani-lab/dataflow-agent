@@ -65,7 +65,7 @@ DATABASES = {
 # ──────────────────────────────────────────────
 # Celery
 # ──────────────────────────────────────────────
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://172.17.0.1:6401/0")
 CELERY_RESULT_BACKEND = "django-db"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
@@ -107,8 +107,8 @@ CORS_ALLOWED_ORIGINS = [
 # Anthropic
 # ──────────────────────────────────────────────
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
-AGENT_MOCK        = env.bool("AGENT_MOCK", default=False)
-OLLAMA_URL        = env("OLLAMA_URL",   default="http://localhost:11434")
+AGENT_MOCK        = env.bool("AGENT_MOCK", default=True)
+OLLAMA_URL        = env("OLLAMA_URL",   default="http://127.0.0.1:11434")
 OLLAMA_MODEL      = env("OLLAMA_MODEL", default="qwen3.5:latest")
 ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-sonnet-4-20250514")
 
@@ -126,7 +126,7 @@ ANTHROPIC_BLENDED_COST_PER_M = (
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [env("REDIS_URL", default="redis://localhost:6379/1")]},
+        "CONFIG": {"hosts": [env("REDIS_URL", default="redis://172.17.0.1:6401/1")]},
     }
 }
 
