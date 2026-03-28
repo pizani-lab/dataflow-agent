@@ -12,7 +12,19 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 VPS="${1:-openclaw@187.77.226.47}"
 REMOTE_DIR="${2:-~/work-dev/dataflow-agent}"
-PATCH_FILE="/tmp/dataflow-deploy-$(date +%s).patch"
+PATCH_FILE="/tmp/$(basename "$ROOT")-deploy-$(date +%s).patch"
+
+# ── Branch base (main ou master) ───────────────────────────────────────
+BASE_BRANCH="$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
+if [ -z "$BASE_BRANCH" ]; then
+  if git show-ref --verify --quiet refs/heads/main; then
+    BASE_BRANCH="main"
+  elif git show-ref --verify --quiet refs/heads/master; then
+    BASE_BRANCH="master"
+  else
+    BASE_BRANCH="main"
+  fi
+fi
 
 # ── Cores ──────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
@@ -41,11 +53,11 @@ if ! gh auth status &>/dev/null; then
 fi
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-BASE="$(git merge-base main "$BRANCH")"
+BASE="$(git merge-base "$BASE_BRANCH" "$BRANCH")"
 COMMITS="$(git rev-list "$BASE".."$BRANCH" --count)"
 
-if [ "$BRANCH" = "main" ]; then
-  error "Você está na main. Crie uma branch antes de fazer deploy."
+if [ "$BRANCH" = "$BASE_BRANCH" ]; then
+  error "Você está na $BASE_BRANCH. Crie uma branch antes de fazer deploy."
   exit 1
 fi
 
@@ -72,7 +84,7 @@ if [ -z "$PR_URL" ]; then
   info "Criando Pull Request..."
   TITLE="$(git log "$BASE".."$BRANCH" --oneline | tail -1 | sed 's/^[a-f0-9]* //')"
   PR_URL="$(gh pr create \
-    --base main \
+    --base "$BASE_BRANCH" \
     --head "$BRANCH" \
     --title "$TITLE" \
     --body "$(git log "$BASE".."$BRANCH" --oneline | sed 's/^/- /')")"
@@ -83,7 +95,7 @@ fi
 
 # ── Gera e envia patch para o VPS ──────────────────────────────────────
 info "Gerando patch para o VPS..."
-git format-patch main.."$BRANCH" --stdout > "$PATCH_FILE"
+git format-patch "$BASE_BRANCH".."$BRANCH" --stdout > "$PATCH_FILE"
 scp -q "$PATCH_FILE" "$VPS:/tmp/dataflow-deploy.patch"
 rm -f "$PATCH_FILE"
 
@@ -92,7 +104,7 @@ info "Aplicando no VPS ($REMOTE_DIR)..."
 ssh "$VPS" bash <<EOF
   set -e
   cd $REMOTE_DIR
-  git checkout main
+  git checkout $BASE_BRANCH
   git branch -D "$BRANCH" 2>/dev/null || true
   git checkout -b "$BRANCH"
   git am --abort 2>/dev/null || true
