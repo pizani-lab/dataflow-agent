@@ -72,7 +72,7 @@ class DataFlowAgent:
         Returns:
             Dict com decisions, quality_score e métricas.
         """
-        if getattr(settings, "AGENT_MOCK", False):
+        if getattr(settings, "AGENT_MOCK", True):
             return self._process_ollama(sample_data, context)
 
         user_message = self._build_user_message(sample_data, context)
@@ -158,8 +158,8 @@ class DataFlowAgent:
         """
         import httpx
 
-        ollama_url   = getattr(settings, "OLLAMA_URL",   "http://localhost:11434")
-        ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen3.5:latest")
+        ollama_url   = getattr(settings, "OLLAMA_URL",   "http://127.0.0.1:11434")
+        ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:3b")
 
         # Converte schemas Anthropic → OpenAI
         openai_tools = [

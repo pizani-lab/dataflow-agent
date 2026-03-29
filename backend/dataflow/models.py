@@ -9,22 +9,12 @@ import uuid
 from django.db import models
 
 
-class TimeStampedModel(models.Model):
-    """Base abstrata com timestamps automáticos."""
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        abstract = True
-
-
 # ──────────────────────────────────────────────
 # Pipeline & Data Sources
 # ──────────────────────────────────────────────
 
 
-class Pipeline(TimeStampedModel):
+class Pipeline(models.Model):
     """
     Um pipeline representa um fluxo de dados completo:
     ingestão → classificação → transformação → carga.
@@ -50,6 +40,8 @@ class Pipeline(TimeStampedModel):
         blank=True,
         help_text="Configurações extras do pipeline (target schema, etc.)",
     )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -58,7 +50,7 @@ class Pipeline(TimeStampedModel):
         return f"{self.name} ({self.status})"
 
 
-class DataSource(TimeStampedModel):
+class DataSource(models.Model):
     """
     Fonte de dados conectada a um pipeline.
     Suporta: file_upload, api_endpoint, webhook, database.
@@ -83,6 +75,8 @@ class DataSource(TimeStampedModel):
         blank=True,
         help_text="Schema detectado automaticamente pelo agente.",
     )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.name} ({self.source_type})"
@@ -93,7 +87,7 @@ class DataSource(TimeStampedModel):
 # ──────────────────────────────────────────────
 
 
-class ProcessingRun(TimeStampedModel):
+class ProcessingRun(models.Model):
     """
     Uma execução do pipeline. Rastreia métricas de volume e duração.
     """
@@ -117,6 +111,8 @@ class ProcessingRun(TimeStampedModel):
         default="manual",
         help_text="O que disparou esta execução (manual, schedule, webhook).",
     )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -131,7 +127,7 @@ class ProcessingRun(TimeStampedModel):
         return None
 
 
-class AgentDecision(TimeStampedModel):
+class AgentDecision(models.Model):
     """
     Registro de cada decisão tomada pelo agente LLM durante um run.
     Funciona como um log de raciocínio auditável.
@@ -151,6 +147,8 @@ class AgentDecision(TimeStampedModel):
     action = models.JSONField(help_text="Ação decidida pelo agente (tool call, transform, etc.).")
     tokens_used = models.IntegerField(default=0)
     latency_ms = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["created_at"]
@@ -164,7 +162,7 @@ class AgentDecision(TimeStampedModel):
 # ──────────────────────────────────────────────
 
 
-class DataLayer(TimeStampedModel):
+class DataLayer(models.Model):
     """
     Armazena uma amostra e estatísticas dos dados em cada camada do pipeline.
 
@@ -176,15 +174,17 @@ class DataLayer(TimeStampedModel):
     class Layer(models.TextChoices):
         BRONZE = "bronze", "Bronze (Raw)"
         SILVER = "silver", "Silver (Clean)"
-        GOLD   = "gold",   "Gold (Aggregated)"
+        GOLD = "gold", "Gold (Aggregated)"
 
-    id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    run       = models.ForeignKey(ProcessingRun, on_delete=models.CASCADE, related_name="layers")
-    layer     = models.CharField(max_length=10, choices=Layer.choices)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    run = models.ForeignKey(ProcessingRun, on_delete=models.CASCADE, related_name="layers")
+    layer = models.CharField(max_length=10, choices=Layer.choices)
     row_count = models.IntegerField(default=0)
-    schema    = models.JSONField(default=dict, help_text="Colunas e tipos detectados.")
-    sample    = models.JSONField(default=list, help_text="Primeiras 10 linhas como lista de dicts.")
-    stats     = models.JSONField(default=dict, help_text="Estatísticas resumidas da camada.")
+    schema = models.JSONField(default=dict, help_text="Colunas e tipos detectados.")
+    sample = models.JSONField(default=list, help_text="Primeiras 10 linhas como lista de dicts.")
+    stats = models.JSONField(default=dict, help_text="Estatísticas resumidas da camada.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["created_at"]
@@ -199,7 +199,7 @@ class DataLayer(TimeStampedModel):
 # ──────────────────────────────────────────────
 
 
-class QualityReport(TimeStampedModel):
+class QualityReport(models.Model):
     """
     Relatório de qualidade gerado pelo agente para cada run.
     """
@@ -217,6 +217,8 @@ class QualityReport(TimeStampedModel):
         default=dict,
         help_text="Detalhes granulares por coluna.",
     )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"Quality: {self.quality_score:.1f}/100 — Run {self.run.id.hex[:8]}"

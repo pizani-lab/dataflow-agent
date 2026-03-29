@@ -142,7 +142,7 @@ ANTHROPIC_API_KEY=sk-ant-sua-chave-aqui
 # Opção B — Ollama local (gratuito)
 AGENT_MOCK=true
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=qwen3.5:latest
+OLLAMA_MODEL=qwen2.5:3b
 ```
 
 ### 3. Inicialize o banco e crie o usuário

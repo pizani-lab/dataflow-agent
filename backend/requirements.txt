@@ -15,7 +15,7 @@ channels-redis>=4.2
 django-celery-beat
 openpyxl>=3.1.5
 pyarrow>=18.0.0
-
+python-dotenv
 # Dev / test
 pytest==8.3.4
 pytest-django==4.9.0

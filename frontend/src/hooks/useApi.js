@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 const BASE_URL = "/api";
-
+console.log(BASE_URL)
 /* ─── Token helpers ─── */
 
 export const getToken  = ()  => localStorage.getItem("df_token");

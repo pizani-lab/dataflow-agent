@@ -57,6 +57,6 @@ htmlcov/
 .mypy_cache/
 
 # ═══ Secrets (soft block — use permissions.deny para hard block) ═══
-.env
+
 .env.*
 secrets/

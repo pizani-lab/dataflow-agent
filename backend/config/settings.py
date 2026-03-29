@@ -5,22 +5,25 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-import environ
+from dotenv import load_dotenv
+load_dotenv()
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-env = environ.Env(DEBUG=(bool, False))
-environ.Env.read_env(os.path.join(BASE_DIR.parent, ".env"))
+# env = environ.Env(DEBUG=(bool, False))
+# environ.Env.read_env(os.path.join(BASE_DIR.parent, ".env"))
 
 # ──────────────────────────────────────────────
 # Core
 # ──────────────────────────────────────────────
-SECRET_KEY = env("SECRET_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY","osdkjpfahgpoijhsfygapiojsdfhgpiouasfhgioqpufh")
 # DEBUG = env("DEBUG")
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
+ALLOWED_HOSTS = ["*"]
 # hostname interno do Docker — necessário quando o proxy Vite usa changeOrigin: true
 if "backend" not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append("backend")
+
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
@@ -61,15 +64,25 @@ MIDDLEWARE = [
 # ──────────────────────────────────────────────
 # Database
 # ──────────────────────────────────────────────
+# Database
 DATABASES = {
-    "default": env.db("DATABASE_URL", default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DB_NAME", "dataflow_agent"),
+        "USER": os.getenv("DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "123"),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
+    }
 }
+
+# Celery
 
 # ──────────────────────────────────────────────
 # Celery
 # ──────────────────────────────────────────────
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default="redis://172.17.0.1:6401/0")
-CELERY_RESULT_BACKEND = "django-db"
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://redis:6379/0")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
@@ -103,22 +116,24 @@ SIMPLE_JWT = {
 # CORS
 # ──────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
+    "http://localhost:5101",
+    "https://api-dataflow.pizani.ia.br",
+    "https://dataflow.pizani.ia.br"
 ]
 
 # ──────────────────────────────────────────────
 # Anthropic
 # ──────────────────────────────────────────────
-ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
-AGENT_MOCK = env.bool("AGENT_MOCK", default=True)
-OLLAMA_URL = env("OLLAMA_URL", default="http://127.0.0.1:11434")
-OLLAMA_MODEL = env("OLLAMA_MODEL", default="qwen3.5:latest")
-ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-sonnet-4-20250514")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", default="")
+AGENT_MOCK = True
+OLLAMA_URL = os.getenv("OLLAMA_URL", default="http://0.0.0.0:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", default="qwen2.5:3b")
+# ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-sonnet-4-20250514")
 
 # Custo por milhão de tokens (claude-sonnet-4-x — preços em USD)
 # Blended = estimativa 80% input + 20% output
-ANTHROPIC_INPUT_COST_PER_M = env.float("ANTHROPIC_INPUT_COST_PER_M", default=3.0)
-ANTHROPIC_OUTPUT_COST_PER_M = env.float("ANTHROPIC_OUTPUT_COST_PER_M", default=15.0)
+ANTHROPIC_INPUT_COST_PER_M = float( os.getenv("ANTHROPIC_INPUT_COST_PER_M", default=3.0))
+ANTHROPIC_OUTPUT_COST_PER_M = float(os.getenv("ANTHROPIC_OUTPUT_COST_PER_M", default=15.0))
 ANTHROPIC_BLENDED_COST_PER_M = (
         ANTHROPIC_INPUT_COST_PER_M * 0.8 + ANTHROPIC_OUTPUT_COST_PER_M * 0.2
 )  # ≈ 5.40 USD/M
@@ -129,14 +144,14 @@ ANTHROPIC_BLENDED_COST_PER_M = (
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [env("REDIS_URL", default="redis://172.17.0.1:6401/1")]},
+        "CONFIG": {"hosts": [os.getenv("REDIS_URL", default="redis://127.0.0.1:6379/1")]},
     }
 }
 
 # ──────────────────────────────────────────────
 # DuckDB
 # ──────────────────────────────────────────────
-DUCKDB_PATH = env("DUCKDB_PATH", default=str(BASE_DIR / "analytics.duckdb"))
+DUCKDB_PATH = os.getenv("DUCKDB_PATH", default=str(BASE_DIR / "analytics.duckdb"))
 
 # ──────────────────────────────────────────────
 # Static / Templates
