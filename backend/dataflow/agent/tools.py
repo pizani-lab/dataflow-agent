@@ -2,24 +2,123 @@
 DataFlow Agent — Tool Definitions
 
 Cada tool é uma função que o agente pode chamar via tool_use.
-As definições seguem o schema da Anthropic API.
-
 O estado dos DataFrames entre chamadas é mantido em _SESSION_STORE,
 indexado pelo session_id retornado por detect_schema.
+
+Suporta Ollama local e cloud com OpenAI-compatible API.
 """
 import io
+import re
+import threading
+import time
 import uuid
+from collections import OrderedDict
+from functools import wraps
+from typing import Any
 
 import pandas as pd
 
-# Session store — mantém DataFrames entre chamadas de tools dentro de um mesmo run
-_SESSION_STORE: dict[str, pd.DataFrame] = {}
+# Tenta importar settings, se falhar usa defaults
+try:
+    from django.conf import settings
+    _SESSION_TTL_SECONDS = getattr(settings, "AGENT_SESSION_TTL", 3600)
+    _EXPORT_CHAR_LIMIT = getattr(settings, "AGENT_EXPORT_LIMIT", 1_000_000)
+    _AGENT_MAX_SESSIONS = getattr(settings, "AGENT_MAX_SESSIONS", 100)
+except Exception:
+    _SESSION_TTL_SECONDS = 3600
+    _EXPORT_CHAR_LIMIT = 1_000_000
+    _AGENT_MAX_SESSIONS = 100
 
-# Export store — armazena o CSV final após validate_output para download posterior
-# Chave: session_id | Valor: CSV string (max 1MB)
+# Thread-safe session store com TTL
+class _SessionStore:
+    """Thread-safe session store com expirable entries."""
+
+    def __init__(self, maxsize: int = 100, ttl: int = 3600):
+        self._store: OrderedDict[str, tuple[pd.DataFrame, float]] = OrderedDict()
+        self._lock = threading.RLock()
+        self._maxsize = maxsize
+        self._ttl = ttl
+
+    def __contains__(self, key: str) -> bool:
+        """Suporte a 'key in store'."""
+        with self._lock:
+            if key not in self._store:
+                return False
+            _, timestamp = self._store[key]
+            if time.time() - timestamp > self._ttl:
+                del self._store[key]
+                return False
+            return True
+
+    def __getitem__(self, key: str) -> pd.DataFrame:
+        """Suporte a store[key]."""
+        df = self.get(key)
+        if df is None:
+            raise KeyError(key)
+        return df
+
+    def get(self, key: str, default=None) -> pd.DataFrame | None:
+        """Get com suporte a default (para compatibilidade com testes)."""
+        with self._lock:
+            if key not in self._store:
+                return default
+            df, timestamp = self._store[key]
+            if time.time() - timestamp > self._ttl:
+                del self._store[key]
+                return default
+            # Move to end (most recently used)
+            self._store.move_to_end(key)
+            return df
+
+    def set(self, key: str, df: pd.DataFrame):
+        with self._lock:
+            # Evict oldest if at capacity
+            while len(self._store) >= self._maxsize:
+                self._store.popitem(last=False)
+            self._store[key] = (df, time.time())
+            self._store.move_to_end(key)
+
+    def pop(self, key: str, default=None) -> pd.DataFrame | None:
+        """Pop com suporte a default (para compatibilidade com testes)."""
+        with self._lock:
+            if key not in self._store:
+                return default
+            df, _ = self._store.pop(key)
+            return df
+
+    def cleanup_expired(self):
+        """Remove entries older than TTL."""
+        with self._lock:
+            now = time.time()
+            expired = [
+                k for k, (_, ts) in self._store.items()
+                if now - ts > self._ttl
+            ]
+            for k in expired:
+                del self._store[k]
+
+    def clear(self):
+        with self._lock:
+            self._store.clear()
+
+    def keys(self):
+        """Retorna chaves ativas (não expiradas)."""
+        with self._lock:
+            now = time.time()
+            return [
+                k for k, (_, ts) in self._store.items()
+                if now - ts <= self._ttl
+            ]
+
+
+_SESSION_STORE = _SessionStore(
+    maxsize=_AGENT_MAX_SESSIONS,
+    ttl=_SESSION_TTL_SECONDS,
+)
+
+# Thread-safe export store
 _EXPORT_STORE: dict[str, str] = {}
-
-_EXPORT_CHAR_LIMIT = 1_000_000  # ~1MB de texto
+_EXPORT_LOCK = threading.RLock()
 
 
 def get_export_csv(session_id: str) -> str | None:
@@ -28,7 +127,8 @@ def get_export_csv(session_id: str) -> str | None:
 
     Deve ser chamada pelo Celery task após agent.process().
     """
-    return _EXPORT_STORE.pop(session_id, None)
+    with _EXPORT_LOCK:
+        return _EXPORT_STORE.pop(session_id, None)
 
 
 # ──────────────────────────────────────────────
@@ -210,7 +310,7 @@ def detect_schema(sample_data: str) -> dict:
         return {"error": "Dados vazios ou sem linhas de conteúdo."}
 
     session_id = str(uuid.uuid4())
-    _SESSION_STORE[session_id] = df
+    _SESSION_STORE.set(session_id, df)
 
     columns = []
     for col in df.columns:
@@ -255,7 +355,7 @@ def assess_quality(session_id: str) -> dict:
     """
     df = _SESSION_STORE.get(session_id)
     if df is None:
-        return {"error": f"Sessão '{session_id}' não encontrada. Execute detect_schema primeiro."}
+        return {"error": f"Sessão '{session_id}' não encontrada ou expirada. Execute detect_schema primeiro."}
 
     total_rows = len(df)
     duplicate_count = int(df.duplicated().sum())
@@ -333,7 +433,7 @@ def plan_transformation(session_id: str, quality_issues: list, steps: list) -> d
     """
     df = _SESSION_STORE.get(session_id)
     if df is None:
-        return {"error": f"Sessão '{session_id}' não encontrada."}
+        return {"error": f"Sessão '{session_id}' não encontrada ou expirada."}
 
     valid_operations = {
         "drop_nulls", "rename_columns", "cast_types",
@@ -361,6 +461,32 @@ def plan_transformation(session_id: str, quality_issues: list, steps: list) -> d
     }
 
 
+def _sanitize_filter_expr(expr: str, available_columns: list[str]) -> str:
+    """
+    Sanitiza expressão para filter_rows, prevenindo injeção.
+
+    Permite apenas identifiers, números, operadores python e espaços.
+    """
+    if not expr:
+        return expr
+
+    # Extrai todas as colunas usadas na expressão
+    col_pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\b'
+    used_cols = re.findall(col_pattern, expr)
+
+    # Valida que todas as colunas usadas existem no DataFrame
+    for col in used_cols:
+        if col not in available_columns and col not in ('True', 'False', 'and', 'or', 'not', 'in', 'is', 'None', 'NaN'):
+            raise ValueError(f"Coluna '{col}' não existe no dataset")
+
+    # Permite apenas caracteres seguros para expressões pandas
+    safe_pattern = r'^[\w\s\+\-\*\/\%\=\<\>\!\(\)\[\]\{\}\,\.\'\"]+$'
+    if not re.match(safe_pattern, expr):
+        raise ValueError("Expressão contém caracteres não permitidos")
+
+    return expr
+
+
 def execute_transform(session_id: str, operation: str, params: dict) -> dict:
     """
     Executa uma transformação no DataFrame armazenado na sessão.
@@ -384,9 +510,10 @@ def execute_transform(session_id: str, operation: str, params: dict) -> dict:
     """
     df = _SESSION_STORE.get(session_id)
     if df is None:
-        return {"error": f"Sessão '{session_id}' não encontrada."}
+        return {"error": f"Sessão '{session_id}' não encontrada ou expirada."}
 
     rows_before = len(df)
+    available_columns = list(df.columns)
 
     try:
         if operation == "drop_nulls":
@@ -402,7 +529,10 @@ def execute_transform(session_id: str, operation: str, params: dict) -> dict:
             dtype = params.get("dtype", "str")
             if not column or column not in df.columns:
                 return {"error": f"Coluna '{column}' não encontrada."}
-            df = df.assign(**{column: df[column].astype(dtype)})
+            try:
+                df = df.assign(**{column: df[column].astype(dtype)})
+            except Exception as e:
+                return {"error": f"Erro ao converter tipo: {str(e)}"}
 
         elif operation == "deduplicate":
             subset = params.get("subset") or params.get("columns")
@@ -412,6 +542,7 @@ def execute_transform(session_id: str, operation: str, params: dict) -> dict:
             expr = params.get("expr", "")
             if not expr:
                 return {"error": "Parâmetro 'expr' obrigatório para filter_rows."}
+            expr = _sanitize_filter_expr(expr, available_columns)
             df = df.query(expr)
 
         elif operation == "normalize":
@@ -421,7 +552,12 @@ def execute_transform(session_id: str, operation: str, params: dict) -> dict:
                 if col in df.columns and pd.api.types.is_numeric_dtype(df[col]):
                     col_min = df[col].min()
                     col_max = df[col].max()
-                    updates[col] = (df[col] - col_min) / (col_max - col_min) if col_max > col_min else 0.0
+                    # Evita divisão por zero - mantém valor original se min==max
+                    if col_max != col_min:
+                        updates[col] = (df[col] - col_min) / (col_max - col_min)
+                    else:
+                        # Quando não há variação, usa 0.5 como valor neutro
+                        updates[col] = 0.5
             df = df.assign(**updates) if updates else df
 
         elif operation == "fill_nulls":
@@ -437,11 +573,13 @@ def execute_transform(session_id: str, operation: str, params: dict) -> dict:
         else:
             return {"error": f"Operação '{operation}' não implementada."}
 
+    except ValueError as e:
+        return {"error": str(e)}
     except Exception as e:
         return {"error": f"Erro ao executar '{operation}': {str(e)}"}
 
     rows_after = len(df)
-    _SESSION_STORE[session_id] = df
+    _SESSION_STORE.set(session_id, df)
 
     return {
         "status": "success",
@@ -471,7 +609,7 @@ def validate_output(session_id: str, expected_schema: dict | None = None) -> dic
     """
     df = _SESSION_STORE.get(session_id)
     if df is None:
-        return {"error": f"Sessão '{session_id}' não encontrada."}
+        return {"error": f"Sessão '{session_id}' não encontrada ou expirada."}
 
     total_rows = len(df)
     total_cells = total_rows * len(df.columns)
@@ -496,7 +634,12 @@ def validate_output(session_id: str, expected_schema: dict | None = None) -> dic
     quality_score = round(quality_score, 2)
 
     # Salva CSV processado para download antes de limpar a sessão
-    _EXPORT_STORE[session_id] = df.to_csv(index=False)[:_EXPORT_CHAR_LIMIT]
+    csv_data = df.to_csv(index=False)
+    if len(csv_data) > _EXPORT_CHAR_LIMIT:
+        csv_data = csv_data[:_EXPORT_CHAR_LIMIT]
+
+    with _EXPORT_LOCK:
+        _EXPORT_STORE[session_id] = csv_data
 
     # Libera a sessão da memória
     _SESSION_STORE.pop(session_id, None)
