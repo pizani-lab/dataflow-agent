@@ -1,9 +1,58 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+
+/* ─── Ollama Status Indicator ─── */
+
+function OllamaStatus() {
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    checkOllamaHealth()
+      .then(data => {
+        setStatus(data);
+        if (data.error) setError(data.error);
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--muted)" }}>
+        <span className="pulse">⏳</span> Verificando Ollama...
+      </div>
+    );
+  }
+
+  const isHealthy = status?.status === "healthy";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{
+        width: 8, height: 8, borderRadius: "50%",
+        background: isHealthy ? "var(--success)" : "var(--danger)",
+      }} />
+      <span style={{ fontSize: 11, fontFamily: "var(--font-mono)", color: "var(--muted)" }}>
+        Ollama: {isHealthy ? "OK" : "Erro"}
+      </span>
+      {!isHealthy && error && (
+        <div title={error} style={{
+          fontSize: 10, color: "var(--danger)", cursor: "help",
+          maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}>
+          {error}
+        </div>
+      )}
+    </div>
+  );
+}
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   AreaChart, Area, PieChart, Pie, Cell,
 } from "recharts";
-import { useApi, uploadFile, triggerPipeline, pausePipeline, resumePipeline, createPipeline, getToken, setToken, clearToken } from "./hooks/useApi";
+import { useApi, uploadFile, triggerPipeline, pausePipeline, resumePipeline, createPipeline, getToken, setToken, clearToken, checkOllamaHealth } from "./hooks/useApi";
 import {
   formatDate, formatDuration, formatNumber,
   STATUS_CONFIG, STEP_ICONS,
@@ -965,7 +1014,7 @@ function LoginScreen({ onLogin }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/token/", {
+      const res = await fetch("https://api-dataflow.pizani.ia.br/api/auth/token/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
@@ -1149,6 +1198,7 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <OllamaStatus />
             <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--font-mono)" }}>
               {currentTime.toLocaleString("pt-BR", { weekday: "short", hour: "2-digit", minute: "2-digit" })}
             </div>
@@ -1293,7 +1343,7 @@ export default function App() {
           display: "flex", justifyContent: "space-between", fontSize: 11,
           color: "var(--muted)", fontFamily: "var(--font-mono)",
         }}>
-          <span>DataFlow Agent v1.0 · Django + Celery + Claude API</span>
+          <span>DataFlow Agent v1.0 </span>
           <span>Daniel Pizani · 2026</span>
         </footer>
       </div>

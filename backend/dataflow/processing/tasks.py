@@ -187,16 +187,19 @@ def _save_bronze_layer(run, data_content: str) -> None:
     except Exception:
         return
 
-    DataLayer.objects.create(
+    # Usa get_or_create para evitar duplicação em caso de retry da task
+    DataLayer.objects.update_or_create(
         run=run,
         layer=DataLayer.Layer.BRONZE,
-        row_count=len(df),
-        schema={col: str(dtype) for col, dtype in df.dtypes.items()},
-        sample=_df_to_sample(df),
-        stats={
-            "column_count": len(df.columns),
-            "null_count": int(df.isnull().sum().sum()),
-            "duplicate_count": int(df.duplicated().sum()),
+        defaults={
+            "row_count": len(df),
+            "schema": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "sample": _df_to_sample(df),
+            "stats": {
+                "column_count": len(df.columns),
+                "null_count": int(df.isnull().sum().sum()),
+                "duplicate_count": int(df.duplicated().sum()),
+            },
         },
     )
 
@@ -213,16 +216,19 @@ def _save_silver_layer(run, processed_csv: str | None) -> None:
     except Exception:
         return
 
-    DataLayer.objects.create(
+    # Usa get_or_create para evitar duplicação em caso de retry da task
+    DataLayer.objects.update_or_create(
         run=run,
         layer=DataLayer.Layer.SILVER,
-        row_count=len(df),
-        schema={col: str(dtype) for col, dtype in df.dtypes.items()},
-        sample=_df_to_sample(df),
-        stats={
-            "column_count": len(df.columns),
-            "null_count": int(df.isnull().sum().sum()),
-            "duplicate_count": int(df.duplicated().sum()),
+        defaults={
+            "row_count": len(df),
+            "schema": {col: str(dtype) for col, dtype in df.dtypes.items()},
+            "sample": _df_to_sample(df),
+            "stats": {
+                "column_count": len(df.columns),
+                "null_count": int(df.isnull().sum().sum()),
+                "duplicate_count": int(df.duplicated().sum()),
+            },
         },
     )
 
@@ -237,18 +243,21 @@ def _save_gold_layer(run, validate_metrics: dict, decisions: list) -> None:
         if d.get("action", {}).get("tool") == "execute_transform"
     ]
 
-    DataLayer.objects.create(
+    # Usa get_or_create para evitar duplicação em caso de retry da task
+    DataLayer.objects.update_or_create(
         run=run,
         layer=DataLayer.Layer.GOLD,
-        row_count=validate_metrics.get("row_count", 0),
-        schema={},
-        sample=[],
-        stats={
-            "quality_score": validate_metrics.get("quality_score", 0),
-            "null_percentage": validate_metrics.get("null_pct", 0),
-            "duplicate_percentage": validate_metrics.get("duplicate_pct", 0),
-            "transformations_applied": [t for t in transformations if t],
-            "total_tokens": sum(d.get("tokens_used", 0) for d in decisions),
+        defaults={
+            "row_count": validate_metrics.get("row_count", 0),
+            "schema": {},
+            "sample": [],
+            "stats": {
+                "quality_score": validate_metrics.get("quality_score", 0),
+                "null_percentage": validate_metrics.get("null_pct", 0),
+                "duplicate_percentage": validate_metrics.get("duplicate_pct", 0),
+                "transformations_applied": [t for t in transformations if t],
+                "total_tokens": sum(d.get("tokens_used", 0) for d in decisions),
+            },
         },
     )
 

@@ -387,3 +387,48 @@ class AgentDecisionViewSet(
         if run_id:
             qs = qs.filter(run_id=run_id)
         return qs
+
+
+# ──────────────────────────────────────────────
+# Health Check - Status do Ollama
+# ──────────────────────────────────────────────
+def health_check(request):
+    """
+    Endpoint de health check que verifica a comunicação com Ollama.
+    Retorna o status do Ollama, URL, modelo e mensagens de erro se houver.
+    """
+    import httpx
+    from django.conf import settings
+
+    ollama_url = getattr(settings, "OLLAMA_URL", "http://0.0.0.0:11434")
+    ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:3b")
+
+    result = {
+        "ollama_url": ollama_url,
+        "ollama_model": ollama_model,
+        "status": "unhealthy",
+        "error": None,
+    }
+
+    try:
+        # Tenta fazer uma requisição simples para o Ollama
+        resp = httpx.get(f"{ollama_url}/api/tags", timeout=5.0)
+        if resp.status_code == 200:
+            result["status"] = "healthy"
+            # Verifica se o modelo está disponível
+            models = resp.json().get("models", [])
+            model_names = [m.get("name", "") for m in models]
+            if ollama_model not in model_names:
+                result["error"] = f"Modelo '{ollama_model}' não encontrado na lista de modelos disponíveis"
+                result["available_models"] = model_names
+        else:
+            result["error"] = f"Ollama retornou status {resp.status_code}"
+    except httpx.ConnectError:
+        result["error"] = f"Não foi possível conectar ao Ollama em {ollama_url}"
+    except httpx.TimeoutException:
+        result["error"] = f"Timeout ao conectar ao Ollama em {ollama_url}"
+    except Exception as e:
+        result["error"] = str(e)
+
+    status_code = 200 if result["status"] == "healthy" else 503
+    return Response(result, status=status_code)

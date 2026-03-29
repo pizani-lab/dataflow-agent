@@ -134,3 +134,13 @@ export async function triggerPipeline(pipelineId) {
   if (!res.ok) throw new Error(`Trigger falhou: HTTP ${res.status}`);
   return res.json();
 }
+
+/**
+ * Verifica o health check do Ollama.
+ * Retorna: { ollama_url, ollama_model, status, error }
+ */
+export async function checkOllamaHealth() {
+  const res = await fetch(`${BASE_URL}/health/`);
+  const data = await res.json();
+  return data;
+}

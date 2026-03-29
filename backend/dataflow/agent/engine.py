@@ -3,17 +3,82 @@ DataFlow Agent — Engine
 
 Orquestra o agente LLM com tool use para processar dados autonomamente.
 O loop principal: envia contexto → recebe tool_use → executa → retorna resultado → repete.
+
+Suporta Ollama local e cloud (OpenAI-compatible API) com retry e cache.
 """
 import json
 import logging
 import time
+from collections import deque
+from functools import lru_cache
+from dotenv import load_dotenv,find_dotenv
+import httpx
 
-import anthropic
-from django.conf import settings
+load_dotenv(find_dotenv())
+# Tenta importar settings, se falhar usa defaults
+try:
+    from django.conf import settings
+    _AGENT_TIMEOUT = getattr(settings, "AGENT_TIMEOUT", 180)
+    _AGENT_MAX_ITERATIONS = getattr(settings, "AGENT_MAX_ITERATIONS", 15)
+    _AGENT_MAX_DECISIONS = getattr(settings, "AGENT_MAX_DECISIONS", 100)
+    _AGENT_MAX_DATA_CHARS = getattr(settings, "AGENT_MAX_DATA_CHARS", 5000)
+    _AGENT_RETRY_ATTEMPTS = getattr(settings, "AGENT_RETRY_ATTEMPTS", 3)
+    _AGENT_RETRY_BACKOFF = getattr(settings, "AGENT_RETRY_BACKOFF", 2.0)
+except Exception:
+    _AGENT_TIMEOUT = 180
+    _AGENT_MAX_ITERATIONS = 15
+    _AGENT_MAX_DECISIONS = 100
+    _AGENT_MAX_DATA_CHARS = 5000
+    _AGENT_RETRY_ATTEMPTS = 3
+    _AGENT_RETRY_BACKOFF = 2.0
 
 from .tools import TOOL_HANDLERS, TOOLS
 
 logger = logging.getLogger(__name__)
+
+# Retry com backoff exponencial
+def _retry_with_backoff(max_attempts: int = 3, backoff: float = 2.0):
+    """Decorator factory para retry com backoff exponencial."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except httpx.HTTPStatusError as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        wait_time = backoff ** attempt
+                        logger.warning(f"HTTP {e.response.status_code}, retry em {wait_time:.1f}s...")
+                        time.sleep(wait_time)
+                except httpx.RequestError as e:
+                    last_exception = e
+                    if attempt < max_attempts - 1:
+                        wait_time = backoff ** attempt
+                        logger.warning(f"Request error: {e}, retry em {wait_time:.1f}s...")
+                        time.sleep(wait_time)
+            raise last_exception
+        return wrapper
+    return decorator
+
+
+@lru_cache(maxsize=1)
+def _get_openai_tools() -> list[dict]:
+    """
+    Converte schemas Anthropic → OpenAI format (cached).
+    Executado uma vez na primeira chamada.
+    """
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in TOOLS
+    ]
 
 
 SYSTEM_PROMPT = """Você é o DataFlow Agent, um engenheiro de dados autônomo.
@@ -46,7 +111,7 @@ Sua missão: receber dados brutos e transformá-los em dados limpos e prontos pa
 
 class DataFlowAgent:
     """
-    Agente que processa dados usando Claude API com tool use.
+    Agente que processa dados usando Ollama local/cloud (OpenAI-compatible API).
 
     Uso:
         agent = DataFlowAgent()
@@ -54,16 +119,12 @@ class DataFlowAgent:
     """
 
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        self.model = settings.ANTHROPIC_MODEL
-        self.decisions: list[dict] = []
+        self.decisions: deque = deque(maxlen=_AGENT_MAX_DECISIONS)
         self.total_tokens = 0
 
     def process(self, sample_data: str, context: str = "") -> dict:
         """
-        Executa o pipeline completo do agente.
-
-        Se AGENT_MOCK=true, usa _process_mock (sem chamada à API).
+        Executa o pipeline usando Ollama local ou cloud (OpenAI-compatible API).
 
         Args:
             sample_data: Dados brutos (CSV ou JSON string).
@@ -72,149 +133,58 @@ class DataFlowAgent:
         Returns:
             Dict com decisions, quality_score e métricas.
         """
-        if getattr(settings, "AGENT_MOCK", True):
-            return self._process_ollama(sample_data, context)
+        ollama_url = getattr(settings, "OLLAMA_URL", "http://0.0.0.0:11434")
+        ollama_model = getattr(settings, "OLLAMA_MODEL", "minimax-m2.5:cloud")
+        iteration = 0
 
-        user_message = self._build_user_message(sample_data, context)
-        messages = [{"role": "user", "content": user_message}]
-
-        logger.info("Iniciando processamento do agente...")
-
-        # Agentic loop: continua enquanto o modelo pedir tool_use
-        max_iterations = 15
-        for iteration in range(max_iterations):
-            start_time = time.time()
-
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                tools=TOOLS,
-                messages=messages,
-            )
-
-            latency_ms = int((time.time() - start_time) * 1000)
-            self.total_tokens += response.usage.input_tokens + response.usage.output_tokens
-
-            # Processa cada bloco da resposta
-            tool_results = []
-            for block in response.content:
-                if block.type == "text" and block.text.strip():
-                    self._record_decision(
-                        step=self._infer_step(iteration),
-                        reasoning=block.text,
-                        action={"type": "reasoning"},
-                        tokens=response.usage.output_tokens,
-                        latency_ms=latency_ms,
-                    )
-
-                elif block.type == "tool_use":
-                    tool_result = self._execute_tool(block)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(tool_result, ensure_ascii=False),
-                    })
-
-                    self._record_decision(
-                        step=self._infer_step_from_tool(block.name),
-                        reasoning=f"Executou tool '{block.name}'",
-                        action={"tool": block.name, "input": block.input, "output": tool_result},
-                        tokens=response.usage.output_tokens,
-                        latency_ms=latency_ms,
-                    )
-
-            # Se não há mais tool_use, o agente terminou
-            if response.stop_reason == "end_turn":
-                logger.info(f"Agente concluiu após {iteration + 1} iterações.")
-                break
-
-            # Adiciona resposta do assistente e resultados das tools
-            messages.append({"role": "assistant", "content": response.content})
-            if tool_results:
-                messages.append({"role": "user", "content": tool_results})
-
-        return {
-            "decisions": self.decisions,
-            "total_tokens": self.total_tokens,
-            "iterations": iteration + 1,
-            "quality_score": self._extract_quality_score(),
-        }
-
-    def _process_ollama(self, sample_data: str, context: str = "") -> dict:
-        """
-        Executa o pipeline usando Ollama local (OpenAI-compatible API).
-
-        Converte o schema das tools de Anthropic → OpenAI, roda o mesmo
-        agentic loop com o modelo configurado em OLLAMA_MODEL, e executa
-        os tool handlers locais (pandas) sem nenhuma chamada externa paga.
-
-        Args:
-            sample_data: Dados brutos (CSV ou JSON string).
-            context: Contexto adicional sobre os dados.
-
-        Returns:
-            Dict com decisions, quality_score e métricas.
-        """
-        import httpx
-
-        ollama_url   = getattr(settings, "OLLAMA_URL",   "http://127.0.0.1:11434")
-        ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:3b")
-
-        # Converte schemas Anthropic → OpenAI
-        openai_tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": t["name"],
-                    "description": t["description"],
-                    "parameters": t["input_schema"],
-                },
-            }
-            for t in TOOLS
-        ]
+        # Usa tools cached (convertido uma vez)
+        openai_tools = _get_openai_tools()
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": self._build_user_message(sample_data, context)},
+            {"role": "user", "content": self._build_user_message(sample_data, context)},
         ]
 
-        decisions:    list[dict] = []
-        total_tokens: int        = 0
+        decisions: deque = deque(maxlen=_AGENT_MAX_DECISIONS)
+        total_tokens: int = 0
 
-        for iteration in range(15):
-            start_time = time.time()
-
-            resp = httpx.post(
+        @_retry_with_backoff(max_attempts=_AGENT_RETRY_ATTEMPTS, backoff=_AGENT_RETRY_BACKOFF)
+        def _call_ollama(msgs: list) -> dict:
+            return httpx.post(
                 f"{ollama_url}/v1/chat/completions",
                 json={
-                    "model":    ollama_model,
-                    "messages": messages,
-                    "tools":    openai_tools,
-                    "stream":   False,
+                    "model": ollama_model,
+                    "messages": msgs,
+                    "tools": openai_tools,
+                    "stream": False,
                 },
-                timeout=180.0,
+                timeout=_AGENT_TIMEOUT,
             )
+
+        for iteration in range(_AGENT_MAX_ITERATIONS):
+            start_time = time.perf_counter()
+
+            resp = _call_ollama(messages)
             resp.raise_for_status()
             data = resp.json()
 
-            latency_ms    = int((time.time() - start_time) * 1000)
-            usage         = data.get("usage", {})
+            latency_ms = int((time.perf_counter() - start_time) * 1000)
+            usage = data.get("usage", {})
             total_tokens += usage.get("total_tokens", 0)
-            step_tokens   = usage.get("completion_tokens", 100)
+            step_tokens = usage.get("completion_tokens", 100)
 
-            choice  = data["choices"][0]
+            choice = data["choices"][0]
             message = choice["message"]
             content = message.get("content") or ""
 
             # Raciocínio em texto (pode estar vazio quando há tool_calls)
             if content.strip():
                 decisions.append({
-                    "step":        self._infer_step(iteration),
-                    "reasoning":   content,
-                    "action":      {"type": "reasoning"},
+                    "step": self._infer_step(iteration),
+                    "reasoning": content,
+                    "action": {"type": "reasoning"},
                     "tokens_used": step_tokens,
-                    "latency_ms":  latency_ms,
+                    "latency_ms": latency_ms,
                 })
 
             tool_calls = message.get("tool_calls") or []
@@ -227,28 +197,28 @@ class DataFlowAgent:
 
             # Executa cada tool call e devolve os resultados
             for tc in tool_calls:
-                fn        = tc["function"]
+                fn = tc["function"]
                 tool_name = fn["name"]
-                raw_args  = fn.get("arguments", "{}")
+                raw_args = fn.get("arguments", "{}")
                 tool_input = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
 
-                handler     = TOOL_HANDLERS.get(tool_name)
+                handler = TOOL_HANDLERS.get(tool_name)
                 tool_result = handler(**tool_input) if handler else {"error": f"Tool '{tool_name}' não encontrada."}
 
                 logger.info(f"[Ollama] Tool '{tool_name}' executada.")
 
                 decisions.append({
-                    "step":        self._infer_step_from_tool(tool_name),
-                    "reasoning":   f"Executou tool '{tool_name}'",
-                    "action":      {"tool": tool_name, "input": tool_input, "output": tool_result},
+                    "step": self._infer_step_from_tool(tool_name),
+                    "reasoning": f"Executou tool '{tool_name}'",
+                    "action": {"tool": tool_name, "input": tool_input, "output": tool_result},
                     "tokens_used": step_tokens,
-                    "latency_ms":  latency_ms,
+                    "latency_ms": latency_ms,
                 })
 
                 messages.append({
-                    "role":         "tool",
+                    "role": "tool",
                     "tool_call_id": tc.get("id", ""),
-                    "content":      json.dumps(tool_result, ensure_ascii=False),
+                    "content": json.dumps(tool_result, ensure_ascii=False),
                 })
 
             # Sem tool calls = agente terminou
@@ -259,43 +229,21 @@ class DataFlowAgent:
         self.decisions = decisions  # permite _extract_quality_score funcionar
 
         return {
-            "decisions":     decisions,
-            "total_tokens":  total_tokens,
-            "iterations":    iteration + 1,
+            "decisions": list(decisions),
+            "total_tokens": total_tokens,
+            "iterations": iteration + 1,
             "quality_score": self._extract_quality_score(),
         }
 
     def _build_user_message(self, sample_data: str, context: str) -> str:
         """Monta a mensagem inicial com os dados."""
-        msg = f"## Dados para processar\n\n```\n{sample_data[:5000]}\n```\n"
+        # Trunca dados se necessário
+        data = sample_data[:_AGENT_MAX_DATA_CHARS]
+        msg = f"## Dados para processar\n\n```\n{data}\n```\n"
         if context:
             msg += f"\n## Contexto adicional\n\n{context}\n"
         msg += "\nPor favor, processe estes dados seguindo o workflow completo."
         return msg
-
-    def _execute_tool(self, tool_block) -> dict:
-        """Executa a tool chamada pelo agente."""
-        handler = TOOL_HANDLERS.get(tool_block.name)
-        if not handler:
-            return {"error": f"Tool '{tool_block.name}' não encontrada."}
-
-        try:
-            result = handler(**tool_block.input)
-            logger.info(f"Tool '{tool_block.name}' executada com sucesso.")
-            return result
-        except Exception as e:
-            logger.error(f"Erro na tool '{tool_block.name}': {e}")
-            return {"error": str(e)}
-
-    def _record_decision(self, step: str, reasoning: str, action: dict, tokens: int, latency_ms: int):
-        """Registra uma decisão do agente."""
-        self.decisions.append({
-            "step": step,
-            "reasoning": reasoning,
-            "action": action,
-            "tokens_used": tokens,
-            "latency_ms": latency_ms,
-        })
 
     def _infer_step(self, iteration: int) -> str:
         """Infere o step com base na iteração."""

@@ -9,6 +9,7 @@ from .views import (
     DataSourceViewSet,
     PipelineViewSet,
     ProcessingRunViewSet,
+    health_check,
 )
 
 router = DefaultRouter()
@@ -21,4 +22,5 @@ app_name = "api"
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("health/", health_check, name="health_check"),
 ]
