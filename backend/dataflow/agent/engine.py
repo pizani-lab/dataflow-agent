@@ -133,8 +133,8 @@ class DataFlowAgent:
         Returns:
             Dict com decisions, quality_score e métricas.
         """
-        ollama_url = getattr(settings, "OLLAMA_URL", "http://0.0.0.0:11434")
-        ollama_model = getattr(settings, "OLLAMA_MODEL", "minimax-m2.5:cloud")
+        ollama_url = getattr(settings, "OLLAMA_URL", "http://187.77.226.47:7143")
+        ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:3b")
         iteration = 0
 
         # Usa tools cached (convertido uma vez)

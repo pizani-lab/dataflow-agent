@@ -18,11 +18,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ──────────────────────────────────────────────
 SECRET_KEY = os.getenv("SECRET_KEY","osdkjpfahgpoijhsfygapiojsdfhgpiouasfhgioqpufh")
 # DEBUG = env("DEBUG")
-DEBUG = os.getenv("DEBUG", "True").lower() == "true"
+DEBUG = True #os.getenv("DEBUG", "True").lower() == "true"
 ALLOWED_HOSTS = ["*"]
 # hostname interno do Docker — necessário quando o proxy Vite usa changeOrigin: true
-if "backend" not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append("backend")
+#if "backend" not in ALLOWED_HOSTS:
+#    ALLOWED_HOSTS.append("backend")
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
@@ -116,9 +116,12 @@ SIMPLE_JWT = {
 # CORS
 # ──────────────────────────────────────────────
 CORS_ALLOWED_ORIGINS = [
+"https://api-dataflow.pizani.ia.br",
+
     "http://localhost:5101",
     "https://api-dataflow.pizani.ia.br",
-    "https://dataflow.pizani.ia.br"
+    "https://dataflow.pizani.ia.br",
+
 ]
 
 # ──────────────────────────────────────────────
@@ -126,8 +129,10 @@ CORS_ALLOWED_ORIGINS = [
 # ──────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", default="")
 AGENT_MOCK = True
-OLLAMA_URL = os.getenv("OLLAMA_URL", default="http://0.0.0.0:11434")
+OLLAMA_URL = os.getenv("OLLAMA_URL", default="http://187.77.226.47:7143")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", default="qwen2.5:3b")
+
+
 # ANTHROPIC_MODEL = env("ANTHROPIC_MODEL", default="claude-sonnet-4-20250514")
 
 # Custo por milhão de tokens (claude-sonnet-4-x — preços em USD)

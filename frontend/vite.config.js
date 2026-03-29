@@ -9,7 +9,7 @@ export default defineConfig({
         proxy: {
             allowedHosts: ["*.pizani.ia.br", "localhost", "*"],
             "/api": {
-                target: process.env.API_TARGET || "https://api-dataflow.pizani.ia.br", changeOrigin: true,
+                target: "https://api-dataflow.pizani.ia.br", changeOrigin: true,
             },
         },
     },

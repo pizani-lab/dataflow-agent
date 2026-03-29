@@ -7,7 +7,8 @@ import os
 import pandas as pd
 from django.http import HttpResponse
 from rest_framework import mixins, permissions, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework import permissions as drf_permissions
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -392,6 +393,10 @@ class AgentDecisionViewSet(
 # ──────────────────────────────────────────────
 # Health Check - Status do Ollama
 # ──────────────────────────────────────────────
+from rest_framework.decorators import api_view
+
+@api_view(["GET"])
+@permission_classes([])
 def health_check(request):
     """
     Endpoint de health check que verifica a comunicação com Ollama.
@@ -400,8 +405,10 @@ def health_check(request):
     import httpx
     from django.conf import settings
 
-    ollama_url = getattr(settings, "OLLAMA_URL", "http://0.0.0.0:11434")
+    ollama_url = getattr(settings, "OLLAMA_URL", "http://187.77.226.47:7143")
     ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:3b")
+    print(ollama_model)
+    print(ollama_url)
 
     result = {
         "ollama_url": ollama_url,
