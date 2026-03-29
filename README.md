@@ -7,7 +7,6 @@
 [![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Django](https://img.shields.io/badge/Django-5.1-092E20?logo=django&logoColor=white)](https://djangoproject.com)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Claude API](https://img.shields.io/badge/Claude_API-Tool_Use-D97757?logo=anthropic&logoColor=white)](https://docs.anthropic.com)
 [![Ollama](https://img.shields.io/badge/Ollama-Local_LLM-black?logo=ollama&logoColor=white)](https://ollama.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
@@ -35,72 +34,73 @@ Suporta **Claude API** (Anthropic) e **Ollama local** (qualquer modelo com tool 
 
 ## 🏗 Arquitetura
 
-```
-                    ┌──────────────┐
-                    │  Upload/API  │
-                    │   Webhook    │
-                    └──────┬───────┘
-                           │
-                    ┌──────▼───────┐
-                    │  Django API  │  REST + JWT auth
-                    │  (DRF 3.15)  │
-                    └──────┬───────┘
-                           │
-                    ┌──────▼───────┐
-                    │ Celery Task  │  Processamento assíncrono
-                    └──────┬───────┘
-                           │
-              ┌────────────▼────────────┐
-              │     🧠 Agente LLM       │
-              │  Claude API  ou  Ollama │
-              │                         │
-              │  1. detect_schema       │
-              │  2. assess_quality      │
-              │  3. plan_transformation │
-              │  4. execute_transform   │
-              │  5. validate_output     │
-              └────────────┬────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │   SQLite / PostgreSQL   │
-              │  bronze → silver → gold │
-              │  + logs de raciocínio   │
-              └────────────┬────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │    React Dashboard      │
-              │  Recharts · WebSocket   │
-              │  DuckDB analytics       │
-              └─────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Frontend["Frontend"]
+        Dashboard["React Dashboard<br/>Recharts · WebSocket · Theme"]
+    end
+
+    subgraph Backend["Backend"]
+        API["Django REST API<br/>JWT Auth · DRF"]
+        Celery["Celery Worker<br/>Async Processing"]
+        Agent["LLM Agent<br/>Claude / Ollama"]
+        DB[(PostgreSQL<br/>SQLite dev)]
+    end
+
+    Upload["Upload<br/>CSV·JSON·XLSX·Parquet"] --> API
+    API --> Celery
+    Celery --> Agent
+    Agent -->|"decisions"| DB
+    Agent -->|"layers"| DB
+    DB --> Dashboard
+
+    style Frontend fill:#1a1a2e,color:#fff
+    style Backend fill:#16213e,color:#fff
+    style API fill:#0f3460,color:#fff
+    style Celery fill:#0f3460,color:#fff
+    style Agent fill:#533483,color:#fff
+    style DB fill:#1b262c,color:#fff
 ```
 
 ### Fluxo do Agente (Agentic Loop)
 
+```mermaid
+stateDiagram-v2
+    [*] --> RawData: CSV/JSON/XLSX/Parquet
+    RawData --> Classify: detect_schema
+    Classify --> Quality: assess_quality
+    Quality --> Plan: plan_transformation
+    Plan --> Execute: execute_transform xN
+    Execute --> Validate: validate_output
+    Validate --> [*]: quality_score 0-100
+
+    note right of Classify
+        session_id + schema + columns + types
+    end note
+
+    note right of Quality
+        nulls + duplicates + outliers
+    end note
+
+    note right of Execute
+        drop_nulls, dedup, fill_nulls,
+        cast_types, normalize, filter
+    end note
 ```
-CSV / JSON / Excel / Parquet
-           │
-           ▼
-┌─ CLASSIFY ──────────────────────────────────────┐
-│  detect_schema → session_id + schema completo   │
-└─────────────────────────────────┬───────────────┘
-                                  ▼
-┌─ QUALITY ───────────────────────────────────────┐
-│  assess_quality → nulos, duplicatas, outliers   │
-└─────────────────────────────────┬───────────────┘
-                                  ▼
-┌─ PLAN ──────────────────────────────────────────┐
-│  plan_transformation → steps ordenados          │
-└─────────────────────────────────┬───────────────┘
-                                  ▼
-┌─ EXECUTE ───────────────────────────────────────┐
-│  execute_transform (×N) → drop_nulls, dedup,    │
-│  fill_nulls, cast_types, normalize, filter...   │
-└─────────────────────────────────┬───────────────┘
-                                  ▼
-┌─ VALIDATE ──────────────────────────────────────┐
-│  validate_output → quality_score 0–100          │
-│  bronze (raw) → silver (clean) → gold (agg)     │
-└─────────────────────────────────────────────────┘
+
+### Camadas de Dados
+
+```mermaid
+flowchart LR
+    Bronze[Bronze Raw Data] --> Silver[Silver Cleaned Data] --> Gold[Gold Aggregated Metrics]
+    QC[Quality Score 0-100] --> Gold
+    Stats[Stats null%, dup%, drift] --> Gold
+
+    style Bronze fill:#cd7f32,color:#fff
+    style Silver fill:#c0c0c0,color:#000
+    style Gold fill:#ffd700,color:#000
+    style QC fill:#4f8ff7,color:#fff
+    style Stats fill:#34d399,color:#000
 ```
 
 ---
@@ -169,6 +169,7 @@ O script sobe **daphne** (ASGI + WebSocket), **Celery worker** e **Vite** em par
 | Dashboard     | http://localhost:5173        |
 | API (DRF)     | http://localhost:8000/api/   |
 | Admin Django  | http://localhost:8000/admin/ |
+| Health Check | http://localhost:8000/api/health/ |
 
 ### 6. Primeiro pipeline
 
@@ -205,6 +206,12 @@ Todos os endpoints requerem autenticação JWT (`Authorization: Bearer <token>`)
 | POST   | `/api/auth/token/`        | Obter token de acesso  |
 | POST   | `/api/auth/token/refresh/`| Renovar token          |
 
+**Health**
+
+| Método | Endpoint     | Descrição                    |
+|--------|-------------|------------------------------|
+| GET    | `/api/health/`| Status do Ollama e sistema |
+
 **Pipelines**
 
 | Método | Endpoint                          | Descrição                            |
@@ -225,7 +232,7 @@ Todos os endpoints requerem autenticação JWT (`Authorization: Bearer <token>`)
 |--------|--------------------------------|----------------------------------------------|
 | GET    | `/api/runs/`                   | Listar (filtros: `pipeline`, `status`, `page`) |
 | GET    | `/api/runs/{id}/`              | Detalhe + decisions + quality report + layers |
-| GET    | `/api/runs/{id}/export/`       | Download dos dados (`?format=csv\|parquet`)  |
+| GET    | `/api/runs/{id}/export/`       | Download dos dados (`?format=csv|parquet`)  |
 
 **WebSocket**
 
@@ -263,13 +270,13 @@ dataflow-agent/
 │   │   ├── consumers.py       # WebSocket consumer
 │   │   └── routing.py
 │   ├── tests/
-│   │   ├── agent/             # 28 testes unitários dos tool handlers
-│   │   └── api/               # 36 testes de integração (JWT, CRUD,
+│   │   ├── agent/             # Testes unitários dos tool handlers
+│   │   └── api/               # Testes de integração (JWT, CRUD,
 │   │                          # filtros, runs, decisions)
 │   └── requirements.txt
 ├── frontend/
 │   └── src/
-│       ├── App.jsx            # Dashboard completo (1100+ linhas)
+│       ├── App.jsx            # Dashboard completo
 │       │                      # LoginScreen, PipelineList, PipelineDetail,
 │       │                      # RunDetail, QualityGauge, RunTimeline,
 │       │                      # AnalyticsSection, dark/light theme
@@ -289,13 +296,13 @@ dataflow-agent/
 cd backend
 source ../.venv/bin/activate
 
-# Todos os testes (64 no total)
+# Todos os testes
 pytest
 
-# Só os testes do agente (28)
+# Testes do agente
 pytest tests/agent/ -v
 
-# Só os testes de API (36)
+# Testes de API
 pytest tests/api/ -v
 ```
 
@@ -315,7 +322,9 @@ pytest tests/api/ -v
 - [x] Dashboard React com dark/light theme
 - [x] QualityGauge circular, RunTimeline, MetricCards
 - [x] Filtros e paginação na API e no frontend
-- [x] 64 testes automatizados (pytest + factory_boy)
+- [x] Testes automatizados (pytest + factory_boy)
+- [x] Health check `/api/health/` com status Ollama
+- [x] Indicador visual de status no frontend
 - [ ] Celery Beat — agendamento via cron UI
 - [ ] Webhook notifications (Slack, Discord)
 - [ ] Docker Compose completo para produção
