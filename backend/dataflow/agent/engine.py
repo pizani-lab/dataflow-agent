@@ -14,23 +14,12 @@ from functools import lru_cache
 from dotenv import load_dotenv,find_dotenv
 import httpx
 
+from config import settings
+from config.settings import AGENT_MAX_DECISIONS, AGENT_RETRY_ATTEMPTS, AGENT_RETRY_BACKOFF, AGENT_TIMEOUT, \
+    AGENT_MAX_ITERATIONS, AGENT_MAX_DATA_CHARS
+
 load_dotenv(find_dotenv())
-# Tenta importar settings, se falhar usa defaults
-try:
-    from django.conf import settings
-    _AGENT_TIMEOUT = getattr(settings, "AGENT_TIMEOUT", 180)
-    _AGENT_MAX_ITERATIONS = getattr(settings, "AGENT_MAX_ITERATIONS", 15)
-    _AGENT_MAX_DECISIONS = getattr(settings, "AGENT_MAX_DECISIONS", 100)
-    _AGENT_MAX_DATA_CHARS = getattr(settings, "AGENT_MAX_DATA_CHARS", 5000)
-    _AGENT_RETRY_ATTEMPTS = getattr(settings, "AGENT_RETRY_ATTEMPTS", 3)
-    _AGENT_RETRY_BACKOFF = getattr(settings, "AGENT_RETRY_BACKOFF", 2.0)
-except Exception:
-    _AGENT_TIMEOUT = 180
-    _AGENT_MAX_ITERATIONS = 15
-    _AGENT_MAX_DECISIONS = 100
-    _AGENT_MAX_DATA_CHARS = 5000
-    _AGENT_RETRY_ATTEMPTS = 3
-    _AGENT_RETRY_BACKOFF = 2.0
+
 
 from .tools import TOOL_HANDLERS, TOOLS
 
@@ -119,7 +108,7 @@ class DataFlowAgent:
     """
 
     def __init__(self):
-        self.decisions: deque = deque(maxlen=_AGENT_MAX_DECISIONS)
+        self.decisions: deque = deque(maxlen=AGENT_MAX_DECISIONS)
         self.total_tokens = 0
 
     def process(self, sample_data: str, context: str = "") -> dict:
@@ -133,8 +122,8 @@ class DataFlowAgent:
         Returns:
             Dict com decisions, quality_score e métricas.
         """
-        ollama_url = getattr(settings, "OLLAMA_URL", "http://187.77.226.47:7143")
-        ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:3b")
+        ollama_url = settings.OLLAMA_URL
+        ollama_model = settings.OLLAMA_MODEL
         iteration = 0
 
         # Usa tools cached (convertido uma vez)
@@ -145,10 +134,10 @@ class DataFlowAgent:
             {"role": "user", "content": self._build_user_message(sample_data, context)},
         ]
 
-        decisions: deque = deque(maxlen=_AGENT_MAX_DECISIONS)
+        decisions: deque = deque(maxlen=AGENT_MAX_DECISIONS)
         total_tokens: int = 0
 
-        @_retry_with_backoff(max_attempts=_AGENT_RETRY_ATTEMPTS, backoff=_AGENT_RETRY_BACKOFF)
+        @_retry_with_backoff(max_attempts=AGENT_RETRY_ATTEMPTS, backoff=AGENT_RETRY_BACKOFF)
         def _call_ollama(msgs: list) -> dict:
             return httpx.post(
                 f"{ollama_url}/v1/chat/completions",
@@ -158,10 +147,10 @@ class DataFlowAgent:
                     "tools": openai_tools,
                     "stream": False,
                 },
-                timeout=_AGENT_TIMEOUT,
+                timeout=AGENT_TIMEOUT,
             )
 
-        for iteration in range(_AGENT_MAX_ITERATIONS):
+        for iteration in range(AGENT_MAX_ITERATIONS):
             start_time = time.perf_counter()
 
             resp = _call_ollama(messages)
@@ -238,7 +227,7 @@ class DataFlowAgent:
     def _build_user_message(self, sample_data: str, context: str) -> str:
         """Monta a mensagem inicial com os dados."""
         # Trunca dados se necessário
-        data = sample_data[:_AGENT_MAX_DATA_CHARS]
+        data = sample_data[:AGENT_MAX_DATA_CHARS]
         msg = f"## Dados para processar\n\n```\n{data}\n```\n"
         if context:
             msg += f"\n## Contexto adicional\n\n{context}\n"

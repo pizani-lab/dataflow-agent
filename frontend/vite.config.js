@@ -5,11 +5,10 @@ export default defineConfig({
     plugins: [react()],
     server: {
         host: "0.0.0.0",
-        port: 5101,
+        port: 5173,
         proxy: {
-            allowedHosts: ["*.pizani.ia.br", "localhost", "*"],
             "/api": {
-                target: "https://api-dataflow.pizani.ia.br", changeOrigin: true,
+                target: "http://localhost:8000", changeOrigin: true,
             },
         },
     },

@@ -8,12 +8,12 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: python manage.py runserver 0.0.0.0:8001
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - ./backend:/app
       - upload_data:/data
     ports:
-      - "8001:8001"
+      - "8000:8000"
     env_file: .env
     depends_on:
       - redis
@@ -49,12 +49,12 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
-      API_TARGET: https://api-dataflow.pizani.ia.br
+      API_TARGET: https://localhost:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "5101:5101"
+      - "5173:5173"
     depends_on:
       - backend
 

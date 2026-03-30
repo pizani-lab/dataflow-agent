@@ -405,8 +405,8 @@ def health_check(request):
     import httpx
     from django.conf import settings
 
-    ollama_url = getattr(settings, "OLLAMA_URL", "http://187.77.226.47:7143")
-    ollama_model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:3b")
+    ollama_url = settings.OLLAMA_URL
+    ollama_model = settings.OLLAMA_MODEL
     print(ollama_model)
     print(ollama_url)
 

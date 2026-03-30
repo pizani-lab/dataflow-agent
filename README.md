@@ -105,62 +105,57 @@ flowchart LR
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (Clone e Rode)
 
 ### Pré-requisitos
 
 - Python 3.11+
-- Redis (para Celery)
 - Node.js 18+ (frontend)
-- Claude API key **ou** [Ollama](https://ollama.com) rodando localmente
+- [Ollama](https://ollama.com) rodando localmente (opcional - pode usar mock)
 
-### 1. Clone e configure o ambiente
+### 1. Clone e instale
 
 ```bash
 git clone https://github.com/pizanao/dataflow-agent.git
 cd dataflow-agent
 
+# Backend
+cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt
+pip install -r requirements.txt
 
-cd frontend && npm install && cd ..
+# Frontend
+cd ../frontend && npm install
 ```
 
-### 2. Configure o `.env`
+### 2. (Opcional) Configure variáveis de ambiente
+
+O sistema já funciona com SQLite + Ollama localhost por padrão. Para customizar:
 
 ```bash
 cp .env.example .env
+# Edite o .env conforme necessário
 ```
 
-```env
-SECRET_KEY=sua-secret-key-aqui
-DATABASE_URL=sqlite:////caminho/absoluto/para/backend/db.sqlite3
-
-# Opção A — Claude API (pago)
-ANTHROPIC_API_KEY=sk-ant-sua-chave-aqui
-
-# Opção B — Ollama local (gratuito)
-AGENT_MOCK=true
-OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=qwen2.5:3b
-```
-
-### 3. Inicialize o banco e crie o usuário
+### 3. Inicialize o banco
 
 ```bash
 cd backend
 python manage.py migrate
-python manage.py createsuperuser --username admin --email ""
+python manage.py create_admin  # cria usuário admin/admin123
 ```
 
-### 4. Suba tudo com um comando
+### 4. Rode
 
 ```bash
-# Na raiz do projeto
-./run_dev.sh
-```
+# Terminal 1 - Backend
+cd backend
+python manage.py runserver
 
-O script sobe **daphne** (ASGI + WebSocket), **Celery worker** e **Vite** em paralelo, com cleanup automático no Ctrl+C.
+# Terminal 2 - Frontend
+cd frontend
+npm run dev
+```
 
 ### 5. Acesse
 
@@ -171,11 +166,13 @@ O script sobe **daphne** (ASGI + WebSocket), **Celery worker** e **Vite** em par
 | Admin Django  | http://localhost:8000/admin/ |
 | Health Check | http://localhost:8000/api/health/ |
 
+**Login padrão:** `admin` / `admin123`
+
 ### 6. Primeiro pipeline
 
-1. Faça login no dashboard com o usuário criado
+1. Faça login no dashboard
 2. Crie um novo pipeline
-3. Faça upload do `demo_data.csv` (incluso na raiz do projeto)
+3. Faça upload do `media/demo_data.csv`
 4. Acompanhe o agente processar em tempo real via WebSocket
 
 ---

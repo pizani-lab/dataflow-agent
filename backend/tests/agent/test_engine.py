@@ -11,7 +11,7 @@ from django.test import override_settings
 class TestDataFlowAgent:
     """Testes para o DataFlowAgent."""
 
-    @override_settings(OLLAMA_URL="http://187.77.226.47:7143", OLLAMA_MODEL="qwen2.5:3b")
+    @override_settings(OLLAMA_URL="http://localhost:11434", OLLAMA_MODEL="qwen2.5:3b")
     @patch("dataflow.agent.engine.httpx.post")
     @patch("dataflow.agent.engine._get_openai_tools")
     def test_agent_faz_chamada_para_ollama(self, mock_tools, mock_post):
@@ -48,7 +48,7 @@ class TestDataFlowAgent:
         assert result is not None
         assert "iterations" in result
 
-    @override_settings(OLLAMA_URL="http://187.77.226.47:7143", OLLAMA_MODEL="qwen2.5:3b")
+    @override_settings(OLLAMA_URL="http://localhost:11434", OLLAMA_MODEL="qwen2.5:3b")
     @patch("dataflow.agent.engine.httpx.post")
     @patch("dataflow.agent.engine._get_openai_tools")
     def test_agent_trata_erro_de_conexao(self, mock_tools, mock_post):
@@ -64,7 +64,7 @@ class TestDataFlowAgent:
 
         assert "error" in result
 
-    @override_settings(OLLAMA_URL="http://187.77.226.47:7143", OLLAMA_MODEL="qwen2.5:3b")
+    @override_settings(OLLAMA_URL="http://localhost:11434", OLLAMA_MODEL="qwen2.5:3b")
     @patch("dataflow.agent.engine.httpx.post")
     @patch("dataflow.agent.engine._get_openai_tools")
     def test_agent_faz_retry_em_erro_http(self, mock_tools, mock_post):
@@ -158,7 +158,7 @@ class TestOllamaConfiguration:
         """Testa que a URL padrão está correta."""
         from django.conf import settings
         url = getattr(settings, "OLLAMA_URL", None)
-        assert url == "http://187.77.226.47:7143"
+        assert url is not None  # URL deve estar configurada via ambiente
 
     def test_valida_modelo_padrao(self):
         """Testa que o modelo padrão está configurado."""
